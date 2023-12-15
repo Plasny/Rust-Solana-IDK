@@ -1,26 +1,29 @@
+// TODO create fake crypto
+mod structs;
+mod errors;
+
 use anchor_lang::prelude::*;
+use errors::TransferError;
+use structs::BasicAccount;
 
 declare_id!("H2J7ji6Ki844eJ96C2cJxYCVrDo1GBxmmTt7f2t286eM");
 
 const INITIAL_BALANCE: u64 = 10;
+const SEED_PREFIX: &'static str = "user_acc";
 
 #[program]
 pub mod anchor {
     use super::*;
 
-    pub fn create_account(ctx: Context<CreateAccount>, account_owner: Pubkey) -> Result<()> {
+    pub fn create_account(ctx: Context<CreateAccount>) -> Result<()> {
         let account = &mut ctx.accounts.account;
-        account.owner = account_owner;
         account.balance = INITIAL_BALANCE;
+        account.bump = ctx.bumps.account;
 
         Ok(())
     }
 
     pub fn transfer(ctx: Context<Transfer>, ammount: u64) -> Result<()> {
-        /* if ctx.program_id.key() == ctx.accounts.sender_acc.key() {
-            return err!(TransferError::Unauthorized);
-        } */
-
         if ctx.accounts.sender_acc.balance < ammount {
             return err!(TransferError::InsufficientFunds);
         }
@@ -41,9 +44,12 @@ pub struct CreateAccount<'info> {
         init,
         payer = authority,
         // calculating space: https://www.anchor-lang.com/docs/space
-        space = 8 + 8 + 32,
+        space = 8 + 8 + 1,
+        seeds = [SEED_PREFIX.as_bytes(), authority.key().as_ref()],
+        bump
     )]
     account: Account<'info, BasicAccount>,
+
     #[account(mut)]
     authority: Signer<'info>,
     system_program: Program<'info, System>,
@@ -51,24 +57,17 @@ pub struct CreateAccount<'info> {
 
 #[derive(Accounts)]
 pub struct Transfer<'info> {
-    #[account(mut, signer)]
+    #[account(
+        mut,
+        seeds = [SEED_PREFIX.as_bytes(), sender.key().as_ref()],
+        bump = sender_acc.bump
+    )]
     sender_acc: Account<'info, BasicAccount>,
+
     #[account(mut)]
     receiver_acc: Account<'info, BasicAccount>,
-    // user: Signer<'info>,
+
+    sender: Signer<'info>,
     system_program: Program<'info, System>,
 }
 
-#[account]
-pub struct BasicAccount {
-    pub owner: Pubkey,
-    pub balance: u64
-}
-
-#[error_code]
-pub enum TransferError {
-    /* #[msg("You are not authorized to perform this action")]
-    Unauthorized, */
-    #[msg("You do not have enough funds to perform this action")]
-    InsufficientFunds,
-}
